@@ -1,0 +1,37 @@
+#!/bin/bash
+set -u
+
+INPUT_DEVICE=$(echo $DEVICE | sed -e 's/\/dev\///g')
+IMGDIR=img/
+TMPMNT=/tmp/SueRescue/
+OUTDIR=data/
+mkdir -p $IMGDIR
+mkdir -p $TMPMNT
+mkdir -p $OUTDIR
+
+poll_device() {
+	printf "Waiting for disk on device $DEVICE..."
+	while [ ! $(lsblk | grep $INPUT_DEVICE | wc -l) -eq 1 ];
+	do
+		true
+	done
+}
+
+copy_data() {
+	printf "\nDisk found!\n"
+	printf "Copying data...\n"
+	printf -v DISK_NUMBER "%02d" `find $IMGDIR -type f -name "*.img" | wc -l`
+	ddrescue -d -r3 $DEVICE ${IMGDIR}DISK_${DISK_NUMBER}.img
+	mount ${IMGDIR}DISK_${DISK_NUMBER}.img ${TMPMNT}
+	find ${TMPMNT} -type f -exec file --mime-type {}  \; | awk '{if ($NF == "image/jpeg") print substr($1, 1, length($1)-1)}' | while read FILE; do
+		rsync -zah --partial --progress ${FILE} ${OUTDIR}/DISK_${DISK_NUMBER}_$(basename ${FILE})
+	done
+	umount ${TMPMNT}
+}
+
+main(){
+	poll_device
+	copy_data
+}
+
+main
